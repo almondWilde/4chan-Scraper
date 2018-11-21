@@ -11,88 +11,81 @@ def dateConvert(date4):	#converts 4chan dateTime format to mysql
 
 #print dateConvert("11/20/18(Tue)16:47:00")
 
-#for pymysql
+#setup for pymysql	-functionize
 HOST = "localhost"
 USER = "root"
 DB = "Community"
 connection = pymysql.connect(host = HOST, user = USER, db = DB, cursorclass=pymysql.cursors.DictCursor)
-print type(connection)
 
-# connection.cursor().execute("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, 'board') VALUES (\"12:12:12\",\"12345673\",\"textSampe asdf\",\"anon\",\"subject test\", \"/b/\")")
-# connection.commit()
-
+#--start board capture function
 r  = requests.get("http://4chan.org/")
 data = r.text
 soup = BeautifulSoup(data, 'html.parser')
 boards = {}
 
 														
-for span in soup.find_all('a', {"class": "boardlink"}):	#capture board names
-	# print span
-	# print len(span)
+for span in soup.find_all('a', {"class": "boardlink"}):	#capture board names	- functionize
 	if(len(span) >= 1):
 		boards[span.text] = ["https:" + span.get('href'), span.get('href')[18:]]	
 
-for key in boards:					#for each board in boards	
+
+#--end of board capture function
+
+for key in boards:					#for each board in boards	-main functionize // args: target boards list
 # 	print key + "\t" + boards[key][1]	#print boards dict
 
-	if(boards[key][1] == "/b/"):
+
+	if(boards[key][1] == "/b/"):	#specify target boards
 		r = requests.get(boards[key][0])
 		data = r.text
 		soup = BeautifulSoup(data, 'html.parser')
 
 		replylink_list = [];
 		for link in soup.find_all('a', {"class": "replylink"}):
-			replylink = "http://boards.4chan.org" + boards[key][1] + link.get('href')
+			replylink = "http://boards.4chan.org" + boards[key][1] + link.get('href')	#only scrapes the from page
+			
 			
 			#post number size changes depending on the board
 			#consider using some sort of regex
-			if(replylink[:35] not in replylink_list):
-				replylink_list.append(replylink[:35])
+			if(replylink[:42] not in replylink_list):	#modify for thread updates - this condition controls for duplicate links
+				replylink_list.append(replylink[:42])
 
 				r_replylink = requests.get(replylink)
 				data_replylink = r_replylink.text
 				soup_replylink = BeautifulSoup(data_replylink, 'html.parser')
 
-#				
-				# print len(replylink_list), replylink_list[len(replylink_list) - 1]
 
-				print replylink
-				#posts: text - dateTime - subject - fileLink - postID?
+				#posts: text - dateTime - subject - fileLink - postID
 				for post in soup_replylink.find_all('div', {"class": "postContainer opContainer"}):
-					#print post,  '\n'
-
-					
-
 					#collects id
-					id = replylink[35:42]
 
-					text = ""
-					#collects text
-					for body in post.find_all('blockquote'):
-					 	text = body.text
+					continue
+					# id = replylink[35:42]
 
-					#collects dateTime
-					dateTime = post.find('span', {"class": "dateTime"}).text[:21]
-					dateTime = dateConvert(dateTime)
+					# #collects text
+					# text = post.find('blockquote').text
 
-					# #collects handle
-					handle= post.find('span', {"class":"name"}).text, '\n'
+					# #collects dateTime
+					# dateTime = post.find('span', {"class": "dateTime"}).text[:21]
+					# dateTime = dateConvert(dateTime)
 
-					# #collects subject
-					sub = ""
-					for subject in post.find_all('span', {"class": "subject"}):
-						if(len(subject.text) ==  0):
-							sub = "no subject"
-						else:
-							sub = subject.text
+					# # #collects handle
+					# handle = post.find('span', {"class":"name"}).text, '\n'
 
-					print id, dateTime, text, handle[0], sub, boards[key][1]
+					# # #collects subject
+					# sub = ""
+					# for subject in post.find_all('span', {"class": "subject"}):
+					# 	if(len(subject.text) ==  0):
+					# 		sub = "NoSubject"
+					# 	else:
+					# 		sub = subject.text
 
-					#check for dupliccate id's for updated posts; theres a way to handle it, just google it
-					query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s, %s)")
-					connection.cursor().execute(query, (id, dateTime, text,handle[0], sub, boards[key][1]))
-					connection.commit()
+					# print id, dateTime, text, handle[0], sub, boards[key][1]
+
+					# #check for dupliccate id's for updated posts; theres a way to handle it, just google it
+					# query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s, %s)")
+					# connection.cursor().execute(query, (id, dateTime, text,handle[0], sub, boards[key][1]))
+					# connection.commit()
 
 				"""
 				future self
@@ -103,23 +96,33 @@ for key in boards:					#for each board in boards
 				for post in soup_replylink.find_all('div', {"class": "postContainer replyContainer"}):
 					
 					continue
-					# #collects text
-					# for text in post.find_all('blockquote'):
-					#  	print text.text, '\n'
+					#collects text
+					text = post.find('blockquote').text
 		
-					# #collects dateTime
-					# print post.find('span', {"class": "dateTime"}).text[:21]
+					#collects dateTime
+					dateTime = post.find('span', {"class": "dateTime"}).text[:21]
 
-					# # # #collects handle
-					# print post.find('span', {"class":"name"}).text
+					#collects handle
+					handle = post.find('span', {"class":"name"}).text
 
 					# # #collects subject
-					# for subject in post.find_all('span', {"class": "subject"}):
-					# 	print subject.text
+					sub = ""
+					for subject in post.find_all('span', {"class": "subject"}):
+						if(len(subject.text) ==  0):
+							sub = "NoSubject"
+						else:
+							sub = subject.text
 
-					# #collects op_id
-					# print replylink[33:42]
+					#collects op_id
+					op_id = replylink[33:42]
 
-					# #reply_id
-					# for reply in post.find_all('a', limit=1):
-					# 	print reply.get("href")[2:]
+					#reply_id
+					reply_id = -1
+					for reply in post.find_all('a', limit=1):
+						reply_id = reply.get("href")[2:]
+
+					print reply_id, op_id, dateTime, text, handle[0], sub, boards[key][1]
+					
+					query = ("INSERT INTO `reply`(`reply_ID`, `op_id`,`dateTime`, `handle`, `subject`, `text`, `board`) VALUES (%s,%s,%s,%s,%s, %s)")
+					connection.cursor().execute(query, (reply_id, op_id, dateTime,handle[0], sub, text, boards[key][1]))
+					connection.commit()
