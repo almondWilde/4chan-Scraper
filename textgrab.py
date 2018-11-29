@@ -91,7 +91,7 @@ def main(boards, connection, soup, board_specific = "/b/"):
 
 						#check for dupliccate id's for updated posts; theres a way to handle it, just google it
 						query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s, %s)")
-						connection.cursor().execute(query, (id, dateTime, text,handle, sub, boards[key][1]))
+						connection.cursor().execute(query, (id, dateTime, text,handle[0], sub, boards[key][1]))
 						connection.commit()
 
 					"""
@@ -107,6 +107,8 @@ def main(boards, connection, soup, board_specific = "/b/"):
 			
 						#collects dateTime
 						dateTime = post.find('span', {"class": "dateTime"}).text[:21]
+						dateTime = dateConvert(dateTime)
+
 
 						#collects handle
 						handle = post.find('span', {"class":"name"}).text
@@ -127,7 +129,7 @@ def main(boards, connection, soup, board_specific = "/b/"):
 						for reply in post.find_all('a', limit=1):
 							reply_id = reply.get("href")[2:]
 
-						print reply_id, op_id, dateTime, text, handle[0], sub, boards[key][1]
+						print reply_id, op_id, dateTime, text, handle, sub, boards[key][1]
 						
 						query = ("INSERT INTO `reply`(`reply_ID`, `op_id`,`dateTime`, `handle`, `subject`, `text`, `board`) VALUES (%s,%s,%s,%s,%s,%s,%s)")
 						connection.cursor().execute(query, (reply_id, op_id, dateTime,handle, sub, text, boards[key][1]))
