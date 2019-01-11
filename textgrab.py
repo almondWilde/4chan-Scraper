@@ -3,6 +3,8 @@ import os
 import urllib
 import requests
 import pymysql
+import time
+
 
 def dateConvert(date4):	
 	#converts 4chan dateTime format to mysql
@@ -21,6 +23,21 @@ def connectToSQL():
 
 	return connection
 
+def handleTags(text):
+	result = ''
+
+	i = 0
+	while i < len(text):
+		if text[i] is '>' and text[i+1] is '>':
+			#print text[i: i + 11]
+			result = result + '\n' + text[i: i + 11 ] + ' '
+			i = i + 11
+		else:
+			result = result + text[i]
+			i = i + 1
+
+	return result
+
 def collectBoards():
 	#collects boards from 4chan header
 	#thia could probably be its own program; running it every time is inefficient
@@ -32,112 +49,191 @@ def collectBoards():
 															
 	for span in soup.find_all('a', {"class": "boardlink"}):
 		if(len(span) >= 1):
-			boards[span.text] = ["https:" + span.get('href'), span.get('href')[18:]]	
+			boards[span.text] = ["https:" + span.get('href'), span.get('href')[ span.get('href').index('/',3) :]]	
+
 
 	return boards, soup
 
+def publish(dict, connection):
+	#Used to insert collected posts/replies to SQL server
+	#Input: replyDict/postDict
+	try:
+		try:
+			if(dict.has_key('op_id')):
+				#if a dictionary has the key 'op_id' then it is a reply
+				#posts do not have an op_id since they are the OP					
+				query = ("INSERT INTO `reply`(`reply_ID`, `op_id`,`dateTime`, `handle`, `subject`, `text`, `board`) VALUES (%s,%s,%s,%s,%s,%s,%s)")
+				connection.cursor().execute(query, ( dict['reply_id'], dict['op_id'], dict['dateTime'], dict['handle'], dict['sub'], dict['text'], dict['board'] ))
+				connection.commit()
+				print dict['board'], dict['reply_id'], dict['op_id'], dict['dateTime'], dict['handle'], dict['sub'], type(dict['text']), dict['text']
+			else:
+				query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s,%s)")
+				connection.cursor().execute( query, (dict['id'], dict['dateTime'], dict['text'],dict['handle'], dict['sub'], dict['board'] ) )
+				onnection.commit()
+				print dict['board'], dict['id'], dict['dateTime'], dict['text'],dict['handle'], dict['sub'], type(dict['board']), dict['text']
+		
+		except pymysql.err.IntegrityError:
+			raise
+	except:
+		return
 
-def main(boards, connection, soup, board_specific = "/b/"):
+
+def scrape(boards, connection, soup, board_specific = ""):
+	postDict = {'id': '','text': '','dateTime': '', 'handle': '', 'sub': '', 'board': ''}
+	replyDict = {'text': '','dateTime': '', 'handle': '','sub':'', 'op_id': '', 'reply_id': ''}
+
 	for key in boards:					#traverse boards	-main functionize // args: boards list, connection, soup
 	# 	print key + "\t" + boards[key][1]	#print boards dict
 
+		if(board_specific is not ""):
 
-		if(boards[key][1] == "/b/"):	#specify target board(s)
-			r = requests.get(boards[key][0])
-			data = r.text
-			soup = BeautifulSoup(data, 'html.parser')
-
-			replylink_list = [];
-			for link in soup.find_all('a', {"class": "replylink"}):
-				replylink = "http://boards.4chan.org" + boards[key][1] + link.get('href')	#only scrapes the front page
+			if(boards[key][1] == board_specific):	#specify target board(s)
+				r = requests.get(boards[key][0])
+				data = r.text
+				soup = BeautifulSoup(data, 'html.parser')
 				
-				
-				#post id length changes depending on the board
-				#consider using some sort of regex
-				if(replylink[:42] not in replylink_list):	#modify for thread updates - this condition controls for duplicate links
-					replylink_list.append(replylink[:42])
-
-					r_replylink = requests.get(replylink)
-					data_replylink = r_replylink.text
-					soup_replylink = BeautifulSoup(data_replylink, 'html.parser')
-
-
-					#posts: id - text - dateTime - handle - subject - board
-					for post in soup_replylink.find_all('div', {"class": "postContainer opContainer"}):
-						#collects id
-
-						#continue
-						id = replylink[35:42]
-
-						#collects text
-						text = post.find('blockquote').text
-
-						#collects dateTime
-						dateTime = post.find('span', {"class": "dateTime"}).text[:21]
-						dateTime = dateConvert(dateTime)
-
-						# #collects handle
-						handle = post.find('span', {"class":"name"}).text, '\n'
-
-						# #collects subject
-						sub = ""
-						for subject in post.find_all('span', {"class": "subject"}):
-							if(len(subject.text) ==  0):
-								sub = "NoSubject"
-							else:
-								sub = subject.text
-
-						print id, dateTime, text, handle[0], sub, boards[key][1]
-
-						#check for dupliccate id's for updated posts; theres a way to handle it, just google it
-						query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s, %s)")
-						connection.cursor().execute(query, (id, dateTime, text,handle[0], sub, boards[key][1]))
-						connection.commit()
-
-					"""
-					future self
-					capture filelinks
-					"""
-
-					#replies: text - dateTime - handle - subject - op - id - board
-					for post in soup_replylink.find_all('div', {"class": "postContainer replyContainer"}):				
-						#continue
-						#collects text
-						text = post.find('blockquote').text
+		else:
+			break;
+			# r = requests.get(boards[key][0])	#scrapes all boards
+			# data = r.text
+			# soup = BeautifulSoup(data, 'html.parser')
+		
+		replylink_list = [];
+		for link in soup.find_all('a', {"class": "replylink"}):
+			replylink = boards[key][0] + link.get('href')
 			
-						#collects dateTime
-						dateTime = post.find('span', {"class": "dateTime"}).text[:21]
-						dateTime = dateConvert(dateTime)
+			
+			#post id length changes depending on the board
+			#consider using some sort of regex
+			if(replylink[:42] not in replylink_list):	#modify for thread updates - this condition controls for duplicate links
+				replylink_list.append(replylink[:42])
+
+				r_replylink = requests.get(replylink)
+				data_replylink = r_replylink.text
+				soup_replylink = BeautifulSoup(data_replylink, 'html.parser')
 
 
-						#collects handle
-						handle = post.find('span', {"class":"name"}).text
+				#This loop handles posts in the format: id - text - dateTime - handle - subject - board
+				for post in soup_replylink.find_all('div', {"class": "postContainer opContainer"}):
 
-						# # #collects subject
-						sub = ""
-						for subject in post.find_all('span', {"class": "subject"}):
-							if(len(subject.text) ==  0):
-								sub = "NoSubject"
-							else:
-								sub = subject.text
+					#collects id
+					try:
+						postDict['id'] = id = replylink[replylink.index('/',30)+1:replylink.index('/',35)]
+					except Exception as e:
+						print e, 'at', replylink
+						exit()
 
-						#collects op_id
-						op_id = replylink[33:42]
+					#collects text
+					replyDict['text'] = text = post.find('blockquote').text
+					if '>>' in text:
+						try:
+							postDict['text'] = text = handleTags(str(text))
+						except UnicodeEncodeError as e:
+							continue
 
-						#reply_id
-						reply_id = -1
-						for reply in post.find_all('a', limit=1):
-							reply_id = reply.get("href")[2:]
 
-						print reply_id, op_id, dateTime, text, handle, sub, boards[key][1]
+					#collects dateTime
+					dateTime = post.find('span', {"class": "dateTime"}).text[:21]
+					dateTime = dateConvert(dateTime)
+					postDict['dateTime'] = dateTime
+
+					# #collects handle
+					postDict['hanlde'] = handle = post.find('span', {"class":"name"}).text, '\n'
+					if(postDict['handle'] == ''):
+						postDict['handle'] = 'Anonymous'
+
+					# #collects subject
+					sub = ""
+					for subject in post.find_all('span', {"class": "subject"}):
+						if(len(subject.text) ==  0):
+							sub = "NoSubject"
+						else:
+							sub = subject.text
 						
-						query = ("INSERT INTO `reply`(`reply_ID`, `op_id`,`dateTime`, `handle`, `subject`, `text`, `board`) VALUES (%s,%s,%s,%s,%s,%s,%s)")
-						connection.cursor().execute(query, (reply_id, op_id, dateTime,handle, sub, text, boards[key][1]))
-						connection.commit()
+						postDict['sub'] = sub
+
+					#collects board the post was on
+					postDict['board'] = boards[key][1]
+					try:
+						if len(text) >= 3:
+							publish(postDict, connection)
+					except:
+						continue
+				"""
+				future self
+				capture filelinks
+				"""
+
+				##This loop handles replies in the format: text - dateTime - handle - subject - op_id - reply_id - board
+				for reply in soup_replylink.find_all('div', {"class": "postContainer replyContainer"}):				
+					#continue
+					#print replylink, 'reply'
+					
+					#collects text
+					replyDict['text'] = text = reply.find('blockquote').text
+					if '>>' in text:
+						try:
+							replyDict['text'] = text = handleTags(str(text))
+						except UnicodeEncodeError as e:
+							continue
+
+		
+					#collects dateTime
+					dateTime = reply.find('span', {"class": "dateTime"}).text[:21]
+					replyDict['dateTime'] = dateTime = dateConvert(dateTime)
 
 
+					#collects handle
+					replyDict['handle'] = handle = reply.find('span', {"class":"name"}).text
+					#empty handle check
+					if(replyDict['handle'] == ''):
+						replyDict['handle'] = 'Anonymous'
 
-boards, soup = collectBoards()
-connection = connectToSQL()
+					# # #collects subject
+					replyDict['sub'] = sub = ""
+					for subject in reply.find_all('span', {"class": "subject"}):
+						#empty subject check
+						if(len(subject.text) ==  0):
+							sub = "NoSubject"
+						else:
+							sub = subject.text
+					replyDict['sub'] = sub
 
-main(boards, connection, soup)
+					#collects op_id
+					replyDict['op_id'] = op_id = replylink[ replylink.index('/',30)+1 : replylink.index('/',35) ]
+
+
+					#reply_id
+					reply_id = -1
+					for reply in reply.find_all('a', limit=1):
+						reply_id = reply.get("href")[2:]
+					replyDict['reply_id'] = reply_id
+
+					#collects board the reply was on
+					replyDict['board'] = boards[key][1]
+
+					try:
+						if len(text) >= 3:
+							publish(replyDict, connection)
+					except:
+						continue
+			else:
+				continue
+
+def main():
+	#print handleTags('>>234356789>>789578121Of course. Only a fool would believe that shit happened')
+	boards, soup = collectBoards()
+	connection = connectToSQL()
+	timer = time.time()
+	# try:
+	# 	while True:
+	# 		scrape(boards, connection, soup, '/b/')
+	# except:
+	# 	print "Local Runtime: ", time.time() - timer, "seconds"
+	# 	exit()
+	
+	while True:
+		scrape(boards, connection, soup, '/b/')
+
+if __name__ == "__main__":
+	main()
