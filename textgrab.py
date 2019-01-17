@@ -5,6 +5,9 @@ import requests
 import pymysql
 import time
 
+LENGTH_OF_ID_NUMBERS = 9
+MINIMUM_TEXT_SIZE = 15
+
 
 def dateConvert(date4):	
 	#converts 4chan dateTime format to mysql
@@ -25,10 +28,11 @@ def connectToSQL():
 
 def handleTags(text):
 	result = ''
+	alpha_count = 0
 
 	i = 0
-	while i < len(text):
-		if text[i] is '>' and text[i+1] is '>':
+	while i < len(text) - 11:
+		if text[i] is '>' and text[i+1] is '>' and i < len(text) - 5:
 			#print text[i: i + 11]
 			result = result + '\n' + text[i: i + 11 ] + ' '
 			i = i + 11
@@ -36,7 +40,14 @@ def handleTags(text):
 			result = result + text[i]
 			i = i + 1
 
-	return result
+		if text[i].isalpha():
+			alpha_count = alpha_count + 1
+
+
+	if alpha_count > MINIMUM_TEXT_SIZE:
+		return result
+	else:
+		return 'NaN'
 
 def collectBoards():
 	#collects boards from 4chan header
@@ -65,12 +76,12 @@ def publish(dict, connection):
 				query = ("INSERT INTO `reply`(`reply_ID`, `op_id`,`dateTime`, `handle`, `subject`, `text`, `board`) VALUES (%s,%s,%s,%s,%s,%s,%s)")
 				connection.cursor().execute(query, ( dict['reply_id'], dict['op_id'], dict['dateTime'], dict['handle'], dict['sub'], dict['text'], dict['board'] ))
 				connection.commit()
-				print dict['board'], dict['reply_id'], dict['op_id'], dict['dateTime'], dict['handle'], dict['sub'], type(dict['text']), dict['text']
+				print dict['board'], dict['reply_id'], dict['op_id'], dict['dateTime'], dict['handle'], dict['sub'], dict['text']
 			else:
 				query = ("INSERT INTO `post`(`id`,`dateTime`, `text`, `handle`, `subject`, `board`) VALUES (%s,%s,%s,%s,%s,%s)")
 				connection.cursor().execute( query, (dict['id'], dict['dateTime'], dict['text'],dict['handle'], dict['sub'], dict['board'] ) )
 				onnection.commit()
-				print dict['board'], dict['id'], dict['dateTime'], dict['text'],dict['handle'], dict['sub'], type(dict['board']), dict['text']
+				print dict['board'], dict['id'], dict['dateTime'], dict['text'],dict['handle'], dict['sub'], dict['text']
 		
 		except pymysql.err.IntegrityError:
 			raise
@@ -118,13 +129,15 @@ def scrape(boards, connection, soup, board_specific = ""):
 
 					#collects id
 					try:
-						postDict['id'] = id = replylink[replylink.index('/',30)+1:replylink.index('/',35)]
+						#print replylink.index('/',30)+1, replylink.index('/',42)
+
+						postDict['id'] = id = replylink[replylink.index('/',33)+1:replylink.index('/',42)]
 					except Exception as e:
-						print e, 'at', replylink
+						print e, 'at', len(replylink)
 						exit()
 
 					#collects text
-					replyDict['text'] = text = post.find('blockquote').text
+					postDict['text'] = text = post.find('blockquote').text
 					if '>>' in text:
 						try:
 							postDict['text'] = text = handleTags(str(text))
@@ -154,15 +167,12 @@ def scrape(boards, connection, soup, board_specific = ""):
 
 					#collects board the post was on
 					postDict['board'] = boards[key][1]
-					try:
-						if len(text) >= 3:
-							publish(postDict, connection)
-					except:
-						continue
-				"""
-				future self
-				capture filelinks
-				"""
+
+					if len(postDict['text']) >= MINIMUM_TEXT_SIZE:
+						publish(postDict, connection)
+
+
+
 
 				##This loop handles replies in the format: text - dateTime - handle - subject - op_id - reply_id - board
 				for reply in soup_replylink.find_all('div', {"class": "postContainer replyContainer"}):				
@@ -176,6 +186,7 @@ def scrape(boards, connection, soup, board_specific = ""):
 							replyDict['text'] = text = handleTags(str(text))
 						except UnicodeEncodeError as e:
 							continue
+						
 
 		
 					#collects dateTime
@@ -212,11 +223,11 @@ def scrape(boards, connection, soup, board_specific = ""):
 					#collects board the reply was on
 					replyDict['board'] = boards[key][1]
 
-					try:
-						if len(text) >= 3:
-							publish(replyDict, connection)
-					except:
-						continue
+
+
+					#minimum text size is 5
+					if len(replyDict['text']) >= MINIMUM_TEXT_SIZE:
+						publish(replyDict, connection)
 			else:
 				continue
 
@@ -225,15 +236,16 @@ def main():
 	boards, soup = collectBoards()
 	connection = connectToSQL()
 	timer = time.time()
-	# try:
-	# 	while True:
-	# 		scrape(boards, connection, soup, '/b/')
-	# except:
-	# 	print "Local Runtime: ", time.time() - timer, "seconds"
-	# 	exit()
+	try:
+		while True:
+			scrape(boards, connection, soup, '/b/')
+	except Exception as e:
+		print "Local Runtime: ", time.time() - timer, "seconds"
+		print e
+		exit()
 	
-	while True:
-		scrape(boards, connection, soup, '/b/')
+	# while True:
+	# 	scrape(boards, connection, soup, '/b/')
 
 if __name__ == "__main__":
 	main()
