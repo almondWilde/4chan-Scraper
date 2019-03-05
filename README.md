@@ -1,3 +1,6 @@
+# 4chanSimulator
+Creates markovify setneces from text collected using textGrab.
+
 # textGrab
 4chan Web Scraper usiing BeautifulSoup
 
