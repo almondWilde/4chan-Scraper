@@ -1,6 +1,10 @@
-# textGrab
-4chan Web Scraper usiing BeautifulSoup
+# 4chan Scraper
 
+4chan Web Scraper using BeautifulSoup
+
+# Image Scraper
+
+# Text Scraper
 Requires an SQL server hosting "Community.sql" at localhost as the root user.
 
 Default credentials:
