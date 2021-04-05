@@ -5,7 +5,7 @@
 # Image Scraper
 
 # Text Scraper
-Requires an SQL server hosting "Community.sql" at localhost as the root user.
+Requires an SQL server hosting "Community.sql" at localhost as the root user. Tested with XAMPP
 
 Default credentials:
 	HOST: localhost
